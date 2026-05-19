@@ -37,18 +37,18 @@ jobs:
       - name: Fetch upstream latest code
         run: |
           git fetch upstream --tags --force
-          echo "=== Upstream branches ==="
+          echo "=== 上游分支 ==="
           git branch -r
 
       - name: Check current branch status
         run: |
-          echo "=== Current branch info ==="
+          echo "=== 当前分支信息 ==="
           git branch -vv
           echo ""
-          echo "=== Latest commits on local ${{ env.TARGET_SYNC_BRANCH }} ==="
+          echo "=== 本地 ${{ env.TARGET_SYNC_BRANCH }} 最新提交 ==="
           git log -3 --oneline
           echo ""
-          echo "=== Latest commits on upstream/${{ env.UPSTREAM_SYNC_BRANCH }} ==="
+          echo "=== 上游/${{ env.UPSTREAM_SYNC_BRANCH }} 最新提交 ==="
           git log -3 upstream/${{ env.UPSTREAM_SYNC_BRANCH }} --oneline
 
       - name: Sync upstream changes using git reset
@@ -56,27 +56,27 @@ jobs:
           git checkout ${{ env.TARGET_SYNC_BRANCH }}
           git reset --hard upstream/${{ env.UPSTREAM_SYNC_BRANCH }}
           git push --force-with-lease origin ${{ env.TARGET_SYNC_BRANCH }}
-          echo "=== Reset complete ==="
+          echo "=== 重置完成 ==="
 
       - name: Verify sync completion
         run: |
           LOCAL_COMMIT=$(git rev-parse HEAD)
           UPSTREAM_COMMIT=$(git rev-parse upstream/${{ env.UPSTREAM_SYNC_BRANCH }})
-          echo "Local commit:  $LOCAL_COMMIT"
-          echo "Upstream commit: $UPSTREAM_COMMIT"
+          echo "本地提交:  $LOCAL_COMMIT"
+          echo "上游提交: $UPSTREAM_COMMIT"
           if [ "$LOCAL_COMMIT" = "$UPSTREAM_COMMIT" ]; then
-            echo "✓ Local branch is now identical to upstream branch"
-            echo "=== Verify file contents ==="
+            echo "✓ 本地分支已与上游分支同步"
+            echo "=== 验证文件内容 ==="
             git diff --stat upstream/${{ env.UPSTREAM_SYNC_BRANCH }} HEAD
           else
-            echo "✗ Sync verification failed"
+            echo "✗ 同步验证失败"
             exit 1
           fi
 
       - name: Sync check
         if: failure()
         run: |
-          echo "[Error] 同步失败，请检查以下可能的原因："
+          echo "[错误] 同步失败，请检查以下可能的原因："
           echo "1. 上游仓库的 workflow 文件发生变更"
           echo "2. 分支保护规则阻止了强制推送"
           echo "请手动 Sync Fork 一次，或检查仓库设置中的分支保护规则。"
