@@ -1,0 +1,91 @@
+name: Upstream Sync
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  UPSTREAM_SYNC_REPO: SagerNet/sing-box
+  UPSTREAM_SYNC_BRANCH: testing
+  TARGET_SYNC_BRANCH: sync
+
+permissions:
+  contents: write
+  actions: write
+
+on:
+  schedule:
+    - cron: "0 0 * * *" # every day
+  workflow_dispatch:
+
+jobs:
+  sync_latest_from_upstream:
+    name: Sync latest commits from upstream repo
+    runs-on: ubuntu-latest
+    if: ${{ github.event.repository.fork }}
+
+    steps:
+      # Step 1: run a standard checkout action
+      - name: Checkout target repo
+        uses: actions/checkout@v6.0.2
+        with:
+          ref: ${{ env.TARGET_SYNC_BRANCH }}
+          fetch-depth: 0
+
+      # Step 2: run the sync action
+      - name: Add upstream remote
+        run: |
+          git remote add upstream "https://github.com/${{ env.UPSTREAM_SYNC_REPO }}.git" || git remote set-url upstream "https://github.com/${{ env.UPSTREAM_SYNC_REPO }}.git"
+
+      - name: Fetch upstream latest code
+        run: |
+          git fetch upstream --tags --force
+          echo "=== Upstream branches ==="
+          git branch -r
+
+      - name: Check current branch status
+        run: |
+          echo "=== Current branch info ==="
+          git branch -vv
+          echo ""
+          echo "=== Latest commits on local ${{ env.TARGET_SYNC_BRANCH }} ==="
+          git log -3 --oneline
+          echo ""
+          echo "=== Latest commits on upstream/${{ env.UPSTREAM_SYNC_BRANCH }} ==="
+          git log -3 upstream/${{ env.UPSTREAM_SYNC_BRANCH }} --oneline
+
+      - name: Sync upstream changes using git reset
+        run: |
+          git checkout ${{ env.TARGET_SYNC_BRANCH }}
+          git reset --hard upstream/${{ env.UPSTREAM_SYNC_BRANCH }}
+          git push --force-with-lease origin ${{ env.TARGET_SYNC_BRANCH }}
+          echo "=== Reset complete ==="
+
+      - name: Verify sync completion
+        run: |
+          LOCAL_COMMIT=$(git rev-parse HEAD)
+          UPSTREAM_COMMIT=$(git rev-parse upstream/${{ env.UPSTREAM_SYNC_BRANCH }})
+          echo "Local commit:  $LOCAL_COMMIT"
+          echo "Upstream commit: $UPSTREAM_COMMIT"
+          if [ "$LOCAL_COMMIT" = "$UPSTREAM_COMMIT" ]; then
+            echo "✓ Local branch is now identical to upstream branch"
+            echo "=== Verify file contents ==="
+            git diff --stat upstream/${{ env.UPSTREAM_SYNC_BRANCH }} HEAD
+          else
+            echo "✗ Sync verification failed"
+            exit 1
+          fi
+
+      - name: Sync check
+        if: failure()
+        run: |
+          echo "[Error] 同步失败，请检查以下可能的原因："
+          echo "1. 上游仓库的 workflow 文件发生变更"
+          echo "2. 分支保护规则阻止了强制推送"
+          echo "请手动 Sync Fork 一次，或检查仓库设置中的分支保护规则。"
+          exit 1
+
+      - name: Delete old workflow runs
+        uses: Mattraks/delete-workflow-runs@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          retain_days: 7
+          keep_minimum_runs: 1
